@@ -22,11 +22,7 @@
  * @copyright 1999 onwards Martin Dougiamas  {@link http://moodle.com}
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-/**
- *  IDO PSTGU ИДО ПСТГУ получить оценку закждую дискуссию/тему
- */
-$string['completiongradeeachdiscussion'] = 'Require rating for each discussion.';
-$string['completiongradeeachdiscussion_help'] = 'For item completion student must get rating for each discussion.';
+
 $string['activityoverview'] = 'There are new forum posts';
 $string['addanewdiscussion'] = 'Add a new discussion topic';
 $string['addanewquestion'] = 'Add a new question';
@@ -86,12 +82,15 @@ $string['cleanreadtime'] = 'Mark old posts as read hour';
 $string['clicktounsubscribe'] = 'You are subscribed to this discussion. Click to unsubscribe.';
 $string['clicktosubscribe'] = 'You are not subscribed to this discussion. Click to subscribe.';
 $string['completiondiscussions'] = 'Student must create discussions:';
+$string['completiondiscussionsdesc'] = 'Student must create at least {$a} discussion(s)';
 $string['completiondiscussionsgroup'] = 'Require discussions';
 $string['completiondiscussionshelp'] = 'requiring discussions to complete';
 $string['completionposts'] = 'Student must post discussions or replies:';
+$string['completionpostsdesc'] = 'Student must post at least {$a} discussion(s) or reply/replies';
 $string['completionpostsgroup'] = 'Require posts';
 $string['completionpostshelp'] = 'requiring discussions or replies to complete';
 $string['completionreplies'] = 'Student must post replies:';
+$string['completionrepliesdesc'] = 'Student must post at least {$a} reply/replies';
 $string['completionrepliesgroup'] = 'Require replies';
 $string['completionreplieshelp'] = 'requiring replies to complete';
 $string['configcleanreadtime'] = 'The hour of the day to clean old posts from the \'read\' table.';
@@ -281,7 +280,6 @@ $string['invalidforcesubscribe'] = 'Invalid force subscription mode';
 $string['invalidforumid'] = 'Forum ID was incorrect';
 $string['invalidparentpostid'] = 'Parent post ID was incorrect';
 $string['invalidpostid'] = 'Invalid post ID - {$a}';
-$string['israted'] = 'Has it been rated?';
 $string['lastpost'] = 'Last post';
 $string['learningforums'] = 'Learning forums';
 $string['lockdiscussionafter'] = 'Lock discussions after period of inactivity';
@@ -291,6 +289,8 @@ Users with the capability to reply to locked discussions can unlock a discussion
 $string['longpost'] = 'Long post';
 $string['mailnow'] = 'Send forum post notifications with no editing-time delay';
 $string['manydiscussions'] = 'Discussions per page';
+$string['managesubscriptionsoff'] = 'Finish managing subscriptions';
+$string['managesubscriptionson'] = 'Manage subscriptions';
 $string['markalldread'] = 'Mark all posts in this discussion read.';
 $string['markallread'] = 'Mark all posts in this forum read.';
 $string['markasreadonnotification'] = 'When sending forum post notifications';
@@ -339,7 +339,6 @@ Forums have many uses, such as
 * A help centre where tutors and students can give advice
 * A one-on-one support area for private student-teacher communications (using a forum with separate groups and with one student per group)
 * For extension activities, for example ‘brain teasers’ for students to ponder and suggest solutions to';
-$string['modforumpstgu'] = 'Forum for exam';
 $string['modulename_link'] = 'mod/forum/view';
 $string['modulenameplural'] = 'Forums';
 $string['more'] = 'more';
@@ -388,7 +387,6 @@ $string['nownottracking'] = '{$a->name} is no longer tracking \'{$a->forum}\'.';
 $string['nowsubscribed'] = '{$a->name} will be notified of new posts in \'{$a->forum}\'';
 $string['nowtracking'] = '{$a->name} is now tracking \'{$a->forum}\'.';
 $string['numposts'] = '{$a} posts';
-$string['numofstudents'] = 'Students without rating';
 $string['olderdiscussions'] = 'Older discussions';
 $string['oldertopics'] = 'Older topics';
 $string['oldpostdays'] = 'Read after days';
@@ -433,9 +431,9 @@ $string['prunedpost'] = 'A new discussion has been created from that post';
 $string['pruneheading'] = 'Split the discussion and move this post to a new discussion';
 $string['qandaforum'] = 'Q and A forum';
 $string['qandanotify'] = 'This is a question and answer forum. In order to see other responses to these questions, you must first post your answer';
-$string['modforumpstgunotify'] = 'This is a test forum for PSTGU. In order to see other responses to these questions, you must get rating to your answer';
 $string['re'] = 'Re:';
 $string['readtherest'] = 'Read the rest of this topic';
+$string['removeallforumtags'] = 'Remove all forum tags';
 $string['replies'] = 'Replies';
 $string['repliesmany'] = '{$a} replies so far';
 $string['repliesone'] = '{$a} reply so far';
@@ -470,6 +468,7 @@ $string['searcholderposts'] = 'Search older posts...';
 $string['searchphrase'] = 'This exact phrase must appear in the post';
 $string['searchresults'] = 'Search results';
 $string['searchsubject'] = 'These words should be in the subject';
+$string['searchtags'] = 'Is tagged with';
 $string['searchuser'] = 'This name should match the author';
 $string['searchuserid'] = 'The Moodle ID of the author';
 $string['searchwhichforums'] = 'Choose which forums to search';
@@ -509,6 +508,9 @@ $string['subscriptionforced'] = 'Forced subscription';
 $string['subscriptionauto'] = 'Auto subscription';
 $string['subscriptiondisabled'] = 'Subscription disabled';
 $string['subscriptions'] = 'Subscriptions';
+$string['tagarea_forum_posts'] = 'Forum posts';
+$string['tagsdeleted'] = 'Forum tags have been deleted';
+$string['tagtitle'] = 'See the "{$a}" tag';
 $string['thisforumisthrottled'] = 'This forum has a limit to the number of forum postings you can make in a given time period - this is currently set at {$a->blockafter} posting(s) in {$a->blockperiod}';
 $string['timedhidden'] = 'Timed status: Hidden from students';
 $string['timedposts'] = 'Timed posts';

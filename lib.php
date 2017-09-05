@@ -130,6 +130,9 @@ function forum_add_instance($forum, $mform = null) {
 
     forum_grade_item_update($forum);
 
+    $completiontimeexpected = !empty($forum->completionexpected) ? $forum->completionexpected : null;
+    \core_completion\api::update_completion_date_event($forum->coursemodule, 'forum', $forum->id, $completiontimeexpected);
+
     return $forum->id;
 }
 
@@ -249,6 +252,9 @@ function forum_update_instance($forum, $mform) {
 
     forum_grade_item_update($forum);
 
+    $completiontimeexpected = !empty($forum->completionexpected) ? $forum->completionexpected : null;
+    \core_completion\api::update_completion_date_event($forum->coursemodule, 'forum', $forum->id, $completiontimeexpected);
+
     return true;
 }
 
@@ -282,6 +288,8 @@ function forum_delete_instance($id) {
     $fs->delete_area_files($context->id);
 
     $result = true;
+
+    \core_completion\api::update_completion_date_event($cm->id, 'forum', $forum->id, null);
 
     // Delete digest and subscription preferences.
     $DB->delete_records('forum_digests', array('forum' => $forum->id));
@@ -392,12 +400,7 @@ WHERE
         }
     }
     if ($forum->completionposts) {
-        //в оригинале идет сравнение необходимого количества сообщений на форуме (установленного в настройках)
-        //и реального количества сообщений, которое приходит из бд
-        //ПСТГУ PSTGU ПСТГУ
-        //$value = $forum->completionposts <= $DB->get_field_sql($postcountsql,$postcountparams);
-		//производим подсчет количества дискуссий с оценками
-        $value = is_rated_all_discussions_on_forum($forum, $userid);
+        $value = $forum->completionposts <= $DB->get_field_sql($postcountsql,$postcountparams);
         if ($type == COMPLETION_AND) {
             $result = $result && $value;
         } else {
@@ -564,13 +567,14 @@ function forum_cron() {
                 }
             }
 
+            $modcontext = context_module::instance($coursemodules[$forumid]->id);
+
             // Save the Inbound Message datakey here to reduce DB queries later.
             $messageinboundgenerator->set_data($pid);
             $messageinboundhandlers[$pid] = $messageinboundgenerator->fetch_data_key();
 
             // Caching subscribed users of each forum.
             if (!isset($subscribedusers[$forumid])) {
-                $modcontext = context_module::instance($coursemodules[$forumid]->id);
                 if ($subusers = \mod_forum\subscriptions::fetch_subscribed_users($forums[$forumid], 0, $modcontext, 'u.*', true)) {
 
                     foreach ($subusers as $postuser) {
@@ -655,8 +659,8 @@ function forum_cron() {
                 }
 
                 // Don't send email if the forum is Q&A and the user has not posted.
-                // Initial topics are still mailed.  PSTGU ПСТГУ
-                if (($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu') && !forum_get_user_posted_time($discussion->id, $userto->id) && $pid != $discussion->firstpost) {
+                // Initial topics are still mailed.
+                if ($forum->type == 'qanda' && !forum_get_user_posted_time($discussion->id, $userto->id) && $pid != $discussion->firstpost) {
                     mtrace('Did not email ' . $userto->id.' because user has not posted in discussion');
                     continue;
                 }
@@ -1328,11 +1332,15 @@ function forum_user_complete($course, $user, $mod, $forum) {
 /**
  * Filters the forum discussions according to groups membership and config.
  *
+ * @deprecated since 3.3
+ * @todo The final deprecation of this function will take place in Moodle 3.7 - see MDL-57487.
  * @since  Moodle 2.8, 2.7.1, 2.6.4
  * @param  array $discussions Discussions with new posts array
  * @return array Forums with the number of new posts
  */
 function forum_filter_user_groups_discussions($discussions) {
+
+    debugging('The function forum_filter_user_groups_discussions() is now deprecated.', DEBUG_DEVELOPER);
 
     // Group the remaining discussions posts by their forumid.
     $filteredforums = array();
@@ -1389,6 +1397,8 @@ function forum_is_user_group_discussion(cm_info $cm, $discussiongroupid) {
 }
 
 /**
+ * @deprecated since 3.3
+ * @todo The final deprecation of this function will take place in Moodle 3.7 - see MDL-57487.
  * @global object
  * @global object
  * @global object
@@ -1397,6 +1407,8 @@ function forum_is_user_group_discussion(cm_info $cm, $discussiongroupid) {
  */
 function forum_print_overview($courses,&$htmlarray) {
     global $USER, $CFG, $DB, $SESSION;
+
+    debugging('The function forum_print_overview() is now deprecated.', DEBUG_DEVELOPER);
 
     if (empty($courses) || !is_array($courses) || count($courses) == 0) {
         return array();
@@ -1671,37 +1683,7 @@ function forum_get_user_grades($forum, $userid = 0) {
     $rm = new rating_manager();
     return $rm->get_user_grades($ratingoptions);
 }
-/**
- * PSTGU ПСТГУ ПСТГУ
- * Производит проверку оценена ли каждая дискуссия у данного пользователя
- * 
- * @global object $DB
- * @param stdClass $forum текущий форум
- * @param stdClass $userid пользователь которому изменили/добавили оценку
- * @return boolean если хотя бы на одной дискуссии нет оценненого сообщения - false
- */
-function is_rated_all_discussions_on_forum($forum, $userid)
-{
-    global  $DB;
-    $sql = "SELECT d.id, (
-    			SELECT COUNT(p.id) 
-                        FROM mdl_forum_posts p 
-                        LEFT JOIN mdl_rating r ON (r.itemid = p.id  AND r.ratingarea = 'post' AND p.userid = $userid)
-    			WHERE r.id IS NOT null AND p.discussion = d.id
-             ) AS ratcnt
-            FROM mdl_forum_discussions d
-            WHERE d.forum = $forum->id";
-    $res = $DB->get_records_sql($sql);
-    //если хотя бы на одной дискуссии нет оценненого сообщения (user hasn`t rated post). 
-    foreach($res as $row)
-    {
-        if(0 == (int)$row->ratcnt)
-        {
-            return FALSE;
-        }
-    }
-    return TRUE;
-}
+
 /**
  * Update activity grades
  *
@@ -1714,29 +1696,7 @@ function is_rated_all_discussions_on_forum($forum, $userid)
 function forum_update_grades($forum, $userid=0, $nullifnone=true) {
     global $CFG, $DB;
     require_once($CFG->libdir.'/gradelib.php');
-    //получили экземпляр курса, в котором находится данный форум
-    $course = get_course($forum->course);
-    //создали объект с инфо о завершении данного курса
-    $completion = new completion_info($course);
-    //получили структуру с инфо о нашем форуме
-    $cm = get_coursemodule_from_instance('forum', $forum->id);
-    //получили инфо о текущем состоянии завершения активности/модуля по заданному пользователю
-    $current = $completion->get_data($cm, false, $userid);
-    //если форум оценивается и и стоит галочка "оценка за каждую дискуссию"
-    // ПСТГУ PSTGU ПСТГУ
-    if ($forum->assessed && $forum->completionposts)
-    {
-        //если есть одна дискуссия, где у пользователя нет оценных сообщений
-        if(!is_rated_all_discussions_on_forum($forum, $userid))
-        {
-            //активность не завершена, то пропускаем ход
-            $completion->update_state($cm, COMPLETION_INCOMPLETE, $userid);
-            return;
-            
-        }
-        //если проверку прошли, то говорим, что завершено
-        $completion->update_state($cm, COMPLETION_COMPLETE, $userid);
-    }
+
     if (!$forum->assessed) {
         forum_grade_item_update($forum);
 
@@ -2015,8 +1975,8 @@ function forum_get_readable_forums($userid, $courseid=0) {
                 }
             }
 
-        /// qanda access  PSTGU ПСТГУ
-            if (($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu')
+        /// qanda access
+            if ($forum->type == 'qanda'
                     && !has_capability('mod/forum:viewqandawithoutposting', $context)) {
 
                 // We need to check whether the user has posted in the qanda forum.
@@ -2081,8 +2041,8 @@ function forum_search_posts($searchterms, $courseid=0, $limitfrom=0, $limitnum=5
 
         $cm = $forum->cm;
         $context = $forum->context;
-        // PSTGU ПСТГУ
-        if (($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu')
+
+        if ($forum->type == 'qanda'
             && !has_capability('mod/forum:viewqandawithoutposting', $context)) {
             if (!empty($forum->onlydiscussions)) {
                 list($discussionid_sql, $discussionid_params) = $DB->get_in_or_equal($forum->onlydiscussions, SQL_PARAMS_NAMED, 'qanda'.$forumid.'_');
@@ -2135,15 +2095,37 @@ function forum_search_posts($searchterms, $courseid=0, $limitfrom=0, $limitnum=5
 
     if ($lexer->parse($searchstring)) {
         $parsearray = $parser->get_parsed_array();
+
+        $tagjoins = '';
+        $tagfields = [];
+        $tagfieldcount = 0;
+        foreach ($parsearray as $token) {
+            if ($token->getType() == TOKEN_TAGS) {
+                for ($i = 0; $i <= substr_count($token->getValue(), ','); $i++) {
+                    // Queries can only have a limited number of joins so set a limit sensible users won't exceed.
+                    if ($tagfieldcount > 10) {
+                        continue;
+                    }
+                    $tagjoins .= " LEFT JOIN {tag_instance} ti_$tagfieldcount
+                                        ON p.id = ti_$tagfieldcount.itemid
+                                            AND ti_$tagfieldcount.component = 'mod_forum'
+                                            AND ti_$tagfieldcount.itemtype = 'forum_posts'";
+                    $tagjoins .= " LEFT JOIN {tag} t_$tagfieldcount ON t_$tagfieldcount.id = ti_$tagfieldcount.tagid";
+                    $tagfields[] = "t_$tagfieldcount.rawname";
+                    $tagfieldcount++;
+                }
+            }
+        }
         list($messagesearch, $msparams) = search_generate_SQL($parsearray, 'p.message', 'p.subject',
                                                               'p.userid', 'u.id', 'u.firstname',
-                                                              'u.lastname', 'p.modified', 'd.forum');
+                                                              'u.lastname', 'p.modified', 'd.forum',
+                                                              $tagfields);
         $params = array_merge($params, $msparams);
     }
 
-    $fromsql = "{forum_posts} p,
-                  {forum_discussions} d,
-                  {user} u";
+    $fromsql = "{forum_posts} p
+                  INNER JOIN {forum_discussions} d ON d.id = p.discussion
+                  INNER JOIN {user} u ON u.id = p.userid $tagjoins";
 
     $selectsql = " $messagesearch
                AND p.discussion = d.id
@@ -2966,46 +2948,6 @@ function forum_get_discussions_unread($cm) {
         return array();
     }
 }
-/**
- * IDO PSTGU ПСТГУ FUNCTION
- * есть ли оценненые сообщения
- * @global object $DB объект для работы с бд
- * @param int $discussid
- * @param int $userid
- * @param int $forumid
- * @return boolean 
- */
-function is_rated_user_post($discussid = null, $userid, $forumid = null)
-{
-    global $DB, $COURSE;
-   
-    $query = " SELECT COUNT(r.id) AS cnt "
-            . "FROM mdl_rating r "
-            . "JOIN mdl_forum_posts fp ON ( fp.id = r.itemid AND fp.userid = " . $userid
-            . ") JOIN mdl_forum_discussions d ON (d.forum " ;
-    
-    if(!$forumid && !$discussid)
-        $query .= 'IS NOT NULL OR fp.discussion IS NOT NULL';
-    elseif(!$forumid && $discussid)
-        $query .= '= \'\' OR fp.discussion = ' . $discussid;
-    elseif($forumid && !$discussid)    
-        $query .= ' = ' . $forumid . ' OR fp.discussion = \'\' ';
-    
-    $query .= " ) WHERE r.ratingarea = 'post'";
-    //получаем первый попавшийся форум курса, чтобы потом получить контекст для пользователя на данном курсе
-    //учитель - явялется учителем на всем курсе
-    //$forum = $DB->get_record('forum', array('course' => $COURSE->id), '*', MUST_EXIST);
-    //получаем экземпляр дискуссии
-    //$cm = get_coursemodule_from_instance('forum', $forum->id, $COURSE->id , false, MUST_EXIST);
-    //получаем контекст по ид дискусии, что бы посмотреть возможности у пользователя
-    //$modcontext = context_module::instance($cm->id);
-    
-    // если есть оценненые сообщения
-    $res = $DB->get_record_sql($query);
-    if($res->cnt != 0 )
-        return true;
-    return FALSE;
-}
 
 /**
  * @global object
@@ -3447,7 +3389,6 @@ function forum_print_post($post, $discussion, $forum, &$cm, $course, $ownpost=fa
     // Begin header row.
     $output .= html_writer::start_div('row header clearfix');
 
-
     // User picture.
     if (!$authorhidden) {
         $picture = $OUTPUT->user_picture($postuser, ['courseid' => $course->id]);
@@ -3498,7 +3439,6 @@ function forum_print_post($post, $discussion, $forum, &$cm, $course, $ownpost=fa
         $output .= html_writer::end_div(); // Left side.
     }
 
-
     $output .= html_writer::start_tag('div', array('class'=>'no-overflow'));
     $output .= html_writer::start_tag('div', array('class'=>'content'));
 
@@ -3526,6 +3466,10 @@ function forum_print_post($post, $discussion, $forum, &$cm, $course, $ownpost=fa
                 array('class'=>'post-word-count'));
         }
         $postcontent .= html_writer::tag('div', $attachedimages, array('class'=>'attachedimages'));
+    }
+
+    if (\core_tag_tag::is_enabled('mod_forum', 'forum_posts')) {
+        $postcontent .= $OUTPUT->tag_list(core_tag_tag::get_item_tags('mod_forum', 'forum_posts', $post->id), null, 'forum-tags');
     }
 
     // Output the post content
@@ -3598,7 +3542,7 @@ function forum_print_post($post, $discussion, $forum, &$cm, $course, $ownpost=fa
 
     // Mark the forum post as read if required
     if ($istracked && !$CFG->forum_usermarksread && !$postisread) {
-        forum_tp_mark_post_read($USER->id, $post, $forum->id);
+        forum_tp_mark_post_read($USER->id, $post);
     }
 
     if ($return) {
@@ -3788,13 +3732,12 @@ function mod_forum_rating_can_see_item_ratings($params) {
  * @param boolean $forumtracked Is the user tracking this forum.
  * @param boolean $canviewparticipants True if user has the viewparticipants permission for this course
  * @param boolean $canviewhiddentimedposts True if user has the viewhiddentimedposts permission for this forum
- * @param int $gradepass ИДО ПСТГУ IDO PSTGU ПСТГУ: передаем проходной балл для сравнения и вывода иконки прогресса (for progress icon opposite each discussion).
  */
 function forum_print_discussion_header(&$post, $forum, $group = -1, $datestring = "",
                                         $cantrack = true, $forumtracked = true, $canviewparticipants = true, $modcontext = null,
-                                        $canviewhiddentimedposts = false, $gradepass = 0) {
+                                        $canviewhiddentimedposts = false) {
 
-    global $COURSE, $USER, $CFG, $OUTPUT, $PAGE, $DB;
+    global $COURSE, $USER, $CFG, $OUTPUT, $PAGE;
 
     static $rowcount;
     static $strmarkalldread;
@@ -3856,100 +3799,6 @@ function forum_print_discussion_header(&$post, $forum, $group = -1, $datestring 
     echo '</span>';
     echo "</td>\n";
 
-    /**
-     * IDO PSTGU ПСТГУ
-     * добавляем столбец с оценкой за каждую дискуссию/тему
-     * смотрим права пользователя
-     * потом загружаем оценки или количество студентов без оцнеки в зависимости от прав
-     * 
-     * (we add rating column for each discussion, then
-     *  take rating of posts from DB or number of students 
-     *  without rated posts in depending on permissions)
-     */
-    if($forum->assessed )//если форум оценивается
-    {
-        global $PAGE;
-        if(has_capability('moodle/grade:viewall', $modcontext, $USER->id))//если пользователь может видеть оценки всех студентов
-        //if user has permissions to view all grade
-        {
-            //получаем ид роли студента из таблицы mdl_roles по полю shortname == student
-            $roleid = $DB->get_record('role', array('shortname'=>'student'));
-            //получаем динамические параметры контекста
-            $params = array_merge($modcontext->get_parent_context_ids(true));                 
-            $sql = "SELECT COUNT(eu1_u.id) AS gradecnt
-                    FROM mdl_user eu1_u                             
-                    JOIN mdl_user_enrolments eu1_ue ON eu1_ue.userid = eu1_u.id                     
-                    JOIN mdl_enrol eu1_e ON ( eu1_e.id = eu1_ue.enrolid AND eu1_e.courseid = '$forum->course')                             
-                    WHERE eu1_u.id IN   (
-                                            SELECT userid FROM mdl_role_assignments WHERE roleid = '$roleid->id' AND contextid IN ('$params[0]','$params[1]','$params[2]')
-                                        ) 
-                    AND (
-                            SELECT COUNT(fp.id) AS gradecnt
-                            FROM mdl_forum_posts fp
-                            LEFT JOIN mdl_rating r ON fp.id = r.itemid
-                            WHERE fp.discussion = $post->discussion AND r.id is NOT NULL AND fp.userid = eu1_u.id
-                        ) = 0";
-
-            if(!$res = $DB->count_records_sql($sql))
-                    $res = 0;       
-        }
-        elseif(has_capability('moodle/grade:view', $modcontext, $USER->id))//если пользователь может видеть только свои оценки
-        //if user hes permissions to view only own grades
-        {
-            $sql = "SELECT fp.discussion, r.rating AS gradecnt                 
-                    FROM mdl_forum_posts fp
-                    JOIN mdl_rating r ON fp.id = r.itemid
-                    WHERE fp.discussion = ? AND fp.userid = ?";
-            $res = $DB->get_records_sql($sql, array($post->discussion, $USER->id));
-            
-            $completionicon = 'auto-n';
-            if($res)
-            {
-                if($gradepass != 0 && $res[$post->discussion]->gradecnt >= $gradepass)
-                    $completionicon = 'auto-pass';
-                elseif($gradepass != 0 && $res[$post->discussion]->gradecnt < $gradepass)
-                    $completionicon = 'auto-fail';
-                elseif($gradepass == 0)
-                    $completionicon = 'auto-y';
-            }
-            //получили для изображения текст для атрибута "alt"
-            $imgalt = get_string('completion-alt-' . $completionicon, 'completion', $forum->name);
-            //собрали структуру для картинки
-            $completionpixicon = new pix_icon('i/completion-'.$completionicon, $imgalt, '',
-                    array('title' => $imgalt));
-            //извлекли название темы
-            $params = array('theme'=>$PAGE->theme->name);
-            //задали навание компонента
-            $params['component'] = 'core';
-            //получили ревизию темы
-            $rev = theme_get_revision();
-            //если есть ревизия темы.
-            if ($rev != -1) 
-            {
-                $params['rev'] = $rev;
-            }
-            else //в противном случае просто ставим, которая когда-то была, для постраховки сделал 
-            {
-                $params['rev'] = 1482738973;
-            }
-            $params['image'] = $completionpixicon->pix;
-            
-            $path = '/'.$params['theme'].'/'.$params['component'].'/'.$params['rev'].'/'.$params['image'];
-            
-            $url = "$CFG->httpswwwroot/theme/image.php" . $path;
-            $res = '<span class="actions">
-                        <span class="autocompletion">';
-            $res .= '<img title="'.$completionpixicon->attributes['title'] . '" class="' . $completionpixicon->attributes['class'];
-            $res .= '" alt="'.$completionpixicon->attributes['alt'].'" ';
-            $res .= 'src="'.$url.'" />';
-            $res .= '   </span>
-                    </span>';
-        }
-        
-        echo '<td class="replies">';
-        echo $res;
-        echo "</td>\n";
-    }
     // Group picture
     if ($group !== -1) {  // Groups are active - group is a group data object or NULL
         echo '<td class="picture group">';
@@ -3986,7 +3835,7 @@ function forum_print_discussion_header(&$post, $forum, $group = -1, $datestring 
                     echo '</a>';
                     echo '<a title="'.$strmarkalldread.'" href="'.$CFG->wwwroot.'/mod/forum/markposts.php?f='.
                          $forum->id.'&amp;d='.$post->discussion.'&amp;mark=read&amp;returnpage=view.php&amp;sesskey=' . sesskey() . '">' .
-                         '<img src="'.$OUTPUT->pix_url('t/markasread') . '" class="iconsmall" alt="'.$strmarkalldread.'" /></a>';
+                         $OUTPUT->pix_icon('t/markasread', $strmarkalldread) . '</a>';
                     echo '</span>';
                 } else {
                     echo '<span class="read">';
@@ -4588,7 +4437,11 @@ function forum_add_new_post($post, $mform, $unused = null) {
     $DB->set_field("forum_discussions", "usermodified", $post->userid, array("id" => $post->discussion));
 
     if (forum_tp_can_track_forums($forum) && forum_tp_is_tracked($forum)) {
-        forum_tp_mark_post_read($post->userid, $post, $post->forum);
+        forum_tp_mark_post_read($post->userid, $post);
+    }
+
+    if (isset($post->tags)) {
+        core_tag_tag::set_item_tags('mod_forum', 'forum_posts', $post->id, $context, $post->tags);
     }
 
     // Let Moodle know that assessable content is uploaded (eg for plagiarism detection)
@@ -4652,8 +4505,12 @@ function forum_update_post($newpost, $mform, $unused = null) {
 
     forum_add_attachment($post, $forum, $cm, $mform);
 
+    if (isset($newpost->tags)) {
+        core_tag_tag::set_item_tags('mod_forum', 'forum_posts', $post->id, $context, $newpost->tags);
+    }
+
     if (forum_tp_can_track_forums($forum) && forum_tp_is_tracked($forum)) {
-        forum_tp_mark_post_read($USER->id, $post, $forum->id);
+        forum_tp_mark_post_read($USER->id, $post);
     }
 
     // Let Moodle know that assessable content is uploaded (eg for plagiarism detection)
@@ -4730,8 +4587,12 @@ function forum_add_discussion($discussion, $mform=null, $unused=null, $userid=nu
         forum_add_attachment($post, $forum, $cm, $mform, $unused);
     }
 
+    if (isset($discussion->tags)) {
+        core_tag_tag::set_item_tags('mod_forum', 'forum_posts', $post->id, context_module::instance($cm->id), $discussion->tags);
+    }
+
     if (forum_tp_can_track_forums($forum) && forum_tp_is_tracked($forum)) {
-        forum_tp_mark_post_read($post->userid, $post, $post->forum);
+        forum_tp_mark_post_read($post->userid, $post);
     }
 
     // Let Moodle know that assessable content is uploaded (eg for plagiarism detection)
@@ -4986,12 +4847,13 @@ function forum_post_subscription($fromform, $forum, $discussion) {
  *      Any strings not passed in are taken from the $defaultmessages array
  *      at the top of the function.
  * @param bool $cantaccessagroup
- * @param bool $fakelink
+ * @param bool $unused1
  * @param bool $backtoindex
- * @param array $subscribed_forums
+ * @param array $unused2
  * @return string
  */
-function forum_get_subscribe_link($forum, $context, $messages = array(), $cantaccessagroup = false, $fakelink=true, $backtoindex=false, $subscribed_forums=null) {
+function forum_get_subscribe_link($forum, $context, $messages = array(), $cantaccessagroup = false, $unused1 = true,
+    $backtoindex = false, $unused2 = null) {
     global $CFG, $USER, $PAGE, $OUTPUT;
     $defaultmessages = array(
         'subscribed' => get_string('unsubscribe', 'forum'),
@@ -5030,22 +4892,11 @@ function forum_get_subscribe_link($forum, $context, $messages = array(), $cantac
         } else {
             $backtoindexlink = '';
         }
-        $link = '';
 
-        if ($fakelink) {
-            $PAGE->requires->js('/mod/forum/forum.js');
-            $PAGE->requires->js_function_call('forum_produce_subscribe_link', array($forum->id, $backtoindexlink, $linktext, $linktitle));
-            $link = "<noscript>";
-        }
         $options['id'] = $forum->id;
         $options['sesskey'] = sesskey();
         $url = new moodle_url('/mod/forum/subscribe.php', $options);
-        $link .= $OUTPUT->single_button($url, $linktext, 'get', array('title'=>$linktitle));
-        if ($fakelink) {
-            $link .= '</noscript>';
-        }
-
-        return $link;
+        return $OUTPUT->single_button($url, $linktext, 'get', array('title' => $linktitle));
     }
 }
 
@@ -5450,7 +5301,8 @@ function forum_user_can_see_post($forum, $discussion, $post, $user=NULL, $cm=NUL
         $user = $USER;
     }
 
-    $canviewdiscussion = !empty($cm->cache->caps['mod/forum:viewdiscussion']) || has_capability('mod/forum:viewdiscussion', $modcontext, $user->id);
+    $canviewdiscussion = (isset($cm->cache) && !empty($cm->cache->caps['mod/forum:viewdiscussion']))
+        || has_capability('mod/forum:viewdiscussion', $modcontext, $user->id);
     if (!$canviewdiscussion && !has_all_capabilities(array('moodle/user:viewdetails', 'moodle/user:readuserposts'), context_user::instance($post->userid))) {
         return false;
     }
@@ -5474,39 +5326,16 @@ function forum_user_can_see_post($forum, $discussion, $post, $user=NULL, $cm=NUL
     }
 
     if ($forum->type == 'qanda') {
+        if (has_capability('mod/forum:viewqandawithoutposting', $modcontext, $user->id) || $post->userid == $user->id
+                || (isset($discussion->firstpost) && $discussion->firstpost == $post->id)) {
+            return true;
+        }
         $firstpost = forum_get_firstpost_from_discussion($discussion->id);
+        if ($firstpost->userid == $user->id) {
+            return true;
+        }
         $userfirstpost = forum_get_user_posted_time($discussion->id, $user->id);
-
-        return (($userfirstpost !== false && (time() - $userfirstpost >= $CFG->maxeditingtime)) ||
-                $firstpost->id == $post->id || $post->userid == $user->id || $firstpost->userid == $user->id ||
-                has_capability('mod/forum:viewqandawithoutposting', $modcontext, $user->id));
-    }
-	// PSTGU ПСТГУ особенности форума для контрольны работ
-    if ($forum->type == 'mod_forum_pstgu') {
-        $firstpost = forum_get_firstpost_from_discussion($discussion->id);
-        $UserCanSeePost = FALSE;
-        $res = is_rated_user_post($discussion->id, $user->id);
-        if (!empty($res)) 
-        {
-            $UserCanSeePost = true;
-        }
-        $query = "  SELECT fp.id "
-                . " FROM mdl_forum_posts fp, mdl_forum_discussions fd "
-                . " WHERE fp.id = " . $post->id
-                . " AND ("
-                . "     (SELECT fp1.userid "
-                . "      FROM mdl_forum_posts fp1 "
-                . "      WHERE fp.parent = fp1.id AND fd.id = fp.discussion AND fp.userid = fd.userid) = " . $user->id 
-                . "      OR (SELECT fp1.userid FROM mdl_forum_posts fp1 WHERE fp.parent = fp1.id AND fd.id = fp.discussion AND fp.userid = fd.userid) = fd.userid)";
-        $res = $DB->get_records_sql($query);
-        if(!empty($res)) 
-        {
-            $UserCanSeePost = true;
-        }
-                
-        return (($UserCanSeePost !== false) ||
-                $firstpost->id == $post->id || $post->userid == $user->id || $firstpost->userid == $user->id ||
-                has_capability('mod/forum:viewqandawithoutposting', $modcontext, $user->id));
+        return (($userfirstpost !== false && (time() - $userfirstpost >= $CFG->maxeditingtime)));
     }
     return true;
 }
@@ -5542,14 +5371,6 @@ function forum_print_latest_discussions($course, $forum, $maxdiscussions = -1, $
 
     if (empty($sort)) {
         $sort = forum_get_default_sort_order();
-    }
-	/**
-     * IDO PSTGU ПСТГУ сортировка sorting
-     * для форума QandA и для контрольной нужно сортировать по названию дискусии
-     */
-    if($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu')
-    {
-        $sort = "d.name ASC";
     }
 
     $olddiscussionlink = false;
@@ -5605,31 +5426,8 @@ function forum_print_latest_discussions($course, $forum, $maxdiscussions = -1, $
             $canstart = enrol_selfenrol_available($course->id);
         }
     }
-	// если форум оценивается, 
-    if($forum->assessed != 0)
-    {
-        global $DB;
-        // получаем ид записи и проходной балл для данного форума
-        // чтобы переменная была видна ниже
-        $sql = "SELECT id, gradepass FROM {grade_items} WHERE iteminstance = $forum->id AND courseid = $course->id AND itemmodule = 'forum'";
-        $item = $DB->get_record_sql($sql);
-        $itemid = $item->id;
-        $gradepass = $item->gradepass;
-    }
-    else
-    {
-        $gradepass = 0;
-    }
+
     if ($canstart) {
-        echo '<div class="singlebutton forumaddnew">';
-        $emptycell = new html_table_cell();
-        $emptycell->text = '';
-        $emptycell->attributes['class'] = 'left'; 
-        $cntrltable = new html_table();
-        $cntrltable->attributes['class'] = 'controls';
-        $cntrltable->data[] = new html_table_row();//новый ряд для первой кнопки "выбрать первых столько-то учащихся"
-        $text1 = "<form id=\"newdiscussionform\" method=\"get\" action=\"$CFG->wwwroot/mod/forum/post.php\">";
-		$text1 .= "<input type=\"hidden\" name=\"forum\" value=\"$forum->id\" />";
         switch ($forum->type) {
             case 'news':
             case 'blog':
@@ -5641,66 +5439,15 @@ function forum_print_latest_discussions($course, $forum, $maxdiscussions = -1, $
             default:
                 $buttonadd = get_string('addanewdiscussion', 'forum');
                 break;
-		}
-		$text1 .= '<input type="submit" value="'.$buttonadd.'" /></form>';
-                 
-        $addnewdisc = new html_table_cell($text1);
-        $addnewdisc->attributes['class'] = 'left';
-        $addnewdisc->attributes['width'] = '100';
-        $cntrltable->data[0]->cells[] = $addnewdisc;
-        //grade:viewall право просматривать оценки других пользователей
-        //rule grade:viewall allows a user to view the grades of other users, including hidden grades
-        if($forum->assessed && has_capability('moodle/grade:viewall', $context, $USER->id))
-        {
-            /* IDO PSTGU ПСТГУ ПСТГУ
-             * кпопка для перехода на прогрeсс завершения.
-             * button to go to completion progress
-             * $CFG->wwwroot/blocks/completion_progress/overview.php
-             */
-            $params = array_merge($context->get_parent_context_ids());
-            
-            $sql = 'SELECT id '
-                    . 'FROM {block_instances} '
-                    . "WHERE parentcontextid = $params[0] AND blockname = 'completion_progress'";
-            // проверели есть ли блок с прогрессом завершения
-            if($id = $DB->get_record_sql($sql))
-            {
-                $text2 = "<form id=\"linktoprogressform\" target=\"_blank\" method=\"get\" action=\"$CFG->wwwroot/blocks/completion_progress/overview.php\">";
-                $text2 .= '<input name="instanceid" value="' . $id->id . '" type="hidden"/>';
-                $text2 .= '<input name="courseid" value="' . $course->id .'" type="hidden"/>';
-                $text2 .= '<input name="sesskey" value="' . sesskey() . '" type="hidden"/>';
-                $text2 .= '<input type="submit" value="'.get_string('pluginname', 'block_completion_progress').'" />';
-                $text2 .= '</form></td>'; 
-                $progressbtn = new html_table_cell($text2);
-                $progressbtn->attributes['class'] = 'left';
-                $progressbtn->attributes['width'] = '100';
-                $cntrltable->data[0]->cells[] = $progressbtn;
-            }
-            if($forum->assessed != 0)
-            {
-                $text3 = "<form id=\"linktogradereportform\" target=\"_blank\" method=\"get\" action=\"$CFG->wwwroot/grade/report/singleview/index.php\">";
-                $text3 .= '<input name="itemid" value="' . $itemid . '" type="hidden"/>';
-                $text3 .= '<input name="id" value="' . $course->id .'" type="hidden"/>';
-                $text3 .= '<input name="item" value="grade"  type="hidden"/>';
-                $text3 .= '<input type="submit" value="Оценки" />';
-                $text3 .= '</form>'; 
-                $gradebtn = new html_table_cell($text3);
-                $gradebtn->attributes['class'] = 'left';
-                $gradebtn->attributes['width'] = '50';
-                $cntrltable->data[0]->cells[] = $gradebtn;
-            }
         }
-        echo html_writer::table($cntrltable);
-        unset($text1);
-        unset($text2);
-        unset($text3);
+        $button = new single_button(new moodle_url('/mod/forum/post.php', ['forum' => $forum->id]), $buttonadd, 'get');
+        $button->class = 'singlebutton forumaddnew';
+        $button->formid = 'newdiscussionform';
+        echo $OUTPUT->render($button);
 
-        //Конец <div class="singlebutton forumaddnew">
-        echo "</div>\n";		
-
-    } else if (isguestuser() or !isloggedin() or $forum->type == 'news' or // PSTGU ПСТГУ
-        ($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu') and !has_capability('mod/forum:addquestion', $context) or
-        ($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu') and !has_capability('mod/forum:startdiscussion', $context)) {
+    } else if (isguestuser() or !isloggedin() or $forum->type == 'news' or
+        $forum->type == 'qanda' and !has_capability('mod/forum:addquestion', $context) or
+        $forum->type != 'qanda' and !has_capability('mod/forum:startdiscussion', $context)) {
         // no button and no info
 
     } else if ($groupmode and !has_capability('moodle/site:accessallgroups', $context)) {
@@ -5720,7 +5467,7 @@ function forum_print_latest_discussions($course, $forum, $maxdiscussions = -1, $
         echo '<div class="forumnodiscuss">';
         if ($forum->type == 'news') {
             echo '('.get_string('nonews', 'forum').')';
-        } else if ($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu') {// PSTGU ПСТГУ
+        } else if ($forum->type == 'qanda') {
             echo '('.get_string('noquestions','forum').')';
         } else {
             echo '('.get_string('nodiscussions', 'forum').')';
@@ -5774,20 +5521,7 @@ function forum_print_latest_discussions($course, $forum, $maxdiscussions = -1, $
         echo '<thead>';
         echo '<tr>';
         echo '<th class="header topic" scope="col">'.get_string('discussion', 'forum').'</th>';
-        echo '<th class="header author" colspan="2" scope="col">'.get_string('startedby', 'forum').'</th>';
-        /**
-        * IDO PSTGU ПСТГУ
-        * добавляем столбец с оценкой за каждую дискуссию/тему, если форум с оценкой
-        * we add rating column for each discussion, if type of forum is QandA
-        */
-        if(has_capability('moodle/grade:viewall', $context, $USER->id) && $forum->assessed )
-        {
-            echo '<th class="header rating" scope="col">'.get_string('numofstudents','forum').'</th>';       
-        }
-        elseif(has_capability('moodle/grade:view', $context, $USER->id) && $forum->assessed )
-        {
-            echo '<th class="header rating" scope="col">'.get_string('israted','forum').'</th>';
-        }
+        echo '<th class="header author" scope="col">'.get_string('startedby', 'forum').'</th>';
         if ($groupmode > 0) {
             echo '<th class="header group" scope="col">'.get_string('group').'</th>';
         }
@@ -5800,7 +5534,7 @@ function forum_print_latest_discussions($course, $forum, $maxdiscussions = -1, $
                     echo '<a title="'.get_string('markallread', 'forum').
                          '" href="'.$CFG->wwwroot.'/mod/forum/markposts.php?f='.
                          $forum->id.'&amp;mark=read&amp;returnpage=view.php&amp;sesskey=' . sesskey() . '">'.
-                         '<img src="'.$OUTPUT->pix_url('t/markasread') . '" class="iconsmall" alt="'.get_string('markallread', 'forum').'" /></a>';
+                         $OUTPUT->pix_icon('t/markasread', get_string('markallread', 'forum')) . '</a>';
                 }
                 echo '</th>';
             }
@@ -5817,9 +5551,9 @@ function forum_print_latest_discussions($course, $forum, $maxdiscussions = -1, $
         echo '</thead>';
         echo '<tbody>';
     }
-    //  PSTGU ПСТГУ
+
     foreach ($discussions as $discussion) {
-        if (($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu') && !has_capability('mod/forum:viewqandawithoutposting', $context) &&
+        if ($forum->type == 'qanda' && !has_capability('mod/forum:viewqandawithoutposting', $context) &&
             !forum_user_has_posted($forum->id, $discussion->discussion, $USER->id)) {
             $canviewparticipants = false;
         }
@@ -5865,7 +5599,7 @@ function forum_print_latest_discussions($course, $forum, $maxdiscussions = -1, $
                     $group = -1;
                 }
                 forum_print_discussion_header($discussion, $forum, $group, $strdatestring, $cantrack, $forumtracked,
-                    $canviewparticipants, $context, $canviewhiddentimedposts, $gradepass);
+                    $canviewparticipants, $context, $canviewhiddentimedposts);
             break;
             default:
                 $link = false;
@@ -6324,7 +6058,7 @@ function forum_print_recent_mod_activity($activity, $courseid, $detail, $modname
     $output .= html_writer::start_div($class);
     if ($detail) {
         $aname = s($activity->name);
-        $output .= html_writer::img($OUTPUT->pix_url('icon', $activity->type), $aname, ['class' => 'icon']);
+        $output .= $OUTPUT->image_icon('icon', $aname, $activity->type);
     }
     $discussionurl = new moodle_url('/mod/forum/discuss.php', ['d' => $content->discussion]);
     $discussionurl->set_anchor('p' . $activity->content->id);
@@ -6384,17 +6118,22 @@ function forum_update_subscriptions_button($courseid, $forumid) {
     global $CFG, $USER;
 
     if (!empty($USER->subscriptionsediting)) {
-        $string = get_string('turneditingoff');
+        $string = get_string('managesubscriptionsoff', 'forum');
         $edit = "off";
     } else {
-        $string = get_string('turneditingon');
+        $string = get_string('managesubscriptionson', 'forum');
         $edit = "on";
     }
 
-    return "<form method=\"get\" action=\"$CFG->wwwroot/mod/forum/subscribers.php\">".
-           "<input type=\"hidden\" name=\"id\" value=\"$forumid\" />".
-           "<input type=\"hidden\" name=\"edit\" value=\"$edit\" />".
-           "<input type=\"submit\" value=\"$string\" /></form>";
+    $subscribers = html_writer::start_tag('form', array('action' => $CFG->wwwroot . '/mod/forum/subscribers.php',
+        'method' => 'get', 'class' => 'form-inline'));
+    $subscribers .= html_writer::empty_tag('input', array('type' => 'submit', 'value' => $string,
+        'class' => 'btn btn-secondary'));
+    $subscribers .= html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'id', 'value' => $forumid));
+    $subscribers .= html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'edit', 'value' => $edit));
+    $subscribers .= html_writer::end_tag('form');
+
+    return $subscribers;
 }
 
 // Functions to do with read tracking.
@@ -6519,9 +6258,12 @@ function forum_tp_add_read_record($userid, $postid) {
 /**
  * If its an old post, do nothing. If the record exists, the maintenance will clear it up later.
  *
+ * @param   int     $userid The ID of the user to mark posts read for.
+ * @param   object  $post   The post record for the post to mark as read.
+ * @param   mixed   $unused
  * @return bool
  */
-function forum_tp_mark_post_read($userid, $post, $forumid) {
+function forum_tp_mark_post_read($userid, $post, $unused = null) {
     if (!forum_tp_is_post_old($post)) {
         return forum_tp_add_read_record($userid, $post->id);
     } else {
@@ -6684,12 +6426,17 @@ function forum_tp_get_course_unread_posts($userid, $courseid) {
  * @global object
  * @param object $cm
  * @param object $course
+ * @param bool   $resetreadcache optional, true to reset the function static $readcache var
  * @return int
  */
-function forum_tp_count_forum_unread_posts($cm, $course) {
+function forum_tp_count_forum_unread_posts($cm, $course, $resetreadcache = false) {
     global $CFG, $USER, $DB;
 
     static $readcache = array();
+
+    if ($resetreadcache) {
+        $readcache = array();
+    }
 
     $forumid = $cm->instance;
 
@@ -7421,8 +7168,7 @@ function forum_get_forum_types() {
                   'eachuser' => get_string('eachuserforum', 'forum'),
                   'single'   => get_string('singleforum', 'forum'),
                   'qanda'    => get_string('qandaforum', 'forum'),
-                  'blog'     => get_string('blogforum', 'forum'),
-                  'mod_forum_pstgu'=> get_string('modforumpstgu','forum' )); // PSTGU ПСТГУ
+                  'blog'     => get_string('blogforum', 'forum'));
 }
 
 /**
@@ -7437,8 +7183,7 @@ function forum_get_forum_types_all() {
                   'eachuser' => get_string('eachuserforum', 'forum'),
                   'single'   => get_string('singleforum', 'forum'),
                   'qanda'    => get_string('qandaforum', 'forum'),
-                  'blog'     => get_string('blogforum', 'forum'),
-                  'mod_forum_pstgu'=> get_string('modforumpstgu','forum' ));// PSTGU ПСТГУ
+                  'blog'     => get_string('blogforum', 'forum'));
 }
 
 /**
@@ -7944,8 +7689,8 @@ function forum_get_posts_by_user($user, array $courses, $musthaveaccess = false,
                     $forumsearchparams['timeend'.$forumid] = $now;
                 }
 
-                // qanda access PSTGU ПСТГУ
-                if (($forum->type == 'qanda' || $forum->type == 'mod_forum_pstgu') && !has_capability('mod/forum:viewqandawithoutposting', $cm->context)) {
+                // qanda access
+                if ($forum->type == 'qanda' && !has_capability('mod/forum:viewqandawithoutposting', $cm->context)) {
                     // We need to check whether the user has posted in the qanda forum.
                     $discussionspostedin = forum_discussions_user_has_posted_in($forum->id, $user->id);
                     if (!empty($discussionspostedin)) {
@@ -8403,4 +8148,195 @@ function forum_check_updates_since(cm_info $cm, $from, $filter = array()) {
     }
 
     return $updates;
+}
+
+/**
+ * Check if the user can create attachments in a forum.
+ * @param  stdClass $forum   forum object
+ * @param  stdClass $context context object
+ * @return bool true if the user can create attachments, false otherwise
+ * @since  Moodle 3.3
+ */
+function forum_can_create_attachment($forum, $context) {
+    // If maxbytes == 1 it means no attachments at all.
+    if (empty($forum->maxattachments) || $forum->maxbytes == 1 ||
+            !has_capability('mod/forum:createattachment', $context)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Get icon mapping for font-awesome.
+ *
+ * @return  array
+ */
+function mod_forum_get_fontawesome_icon_map() {
+    return [
+        'mod_forum:i/pinned' => 'fa-map-pin',
+        'mod_forum:t/selected' => 'fa-check',
+        'mod_forum:t/subscribed' => 'fa-envelope-o',
+        'mod_forum:t/unsubscribed' => 'fa-envelope-open-o',
+    ];
+}
+
+/**
+ * Callback function that determines whether an action event should be showing its item count
+ * based on the event type and the item count.
+ *
+ * @param calendar_event $event The calendar event.
+ * @param int $itemcount The item count associated with the action event.
+ * @return bool
+ */
+function mod_forum_core_calendar_event_action_shows_item_count(calendar_event $event, $itemcount = 0) {
+    // Always show item count for forums if item count is greater than 1.
+    // If only one action is required than it is obvious and we don't show it for other modules.
+    return $itemcount > 1;
+}
+
+/**
+ * This function receives a calendar event and returns the action associated with it, or null if there is none.
+ *
+ * This is used by block_myoverview in order to display the event appropriately. If null is returned then the event
+ * is not displayed on the block.
+ *
+ * @param calendar_event $event
+ * @param \core_calendar\action_factory $factory
+ * @return \core_calendar\local\event\entities\action_interface|null
+ */
+function mod_forum_core_calendar_provide_event_action(calendar_event $event,
+                                                       \core_calendar\action_factory $factory) {
+    global $DB, $USER;
+
+    $cm = get_fast_modinfo($event->courseid)->instances['forum'][$event->instance];
+    $context = context_module::instance($cm->id);
+
+    if (!has_capability('mod/forum:viewdiscussion', $context)) {
+        return null;
+    }
+
+    $completion = new \completion_info($cm->get_course());
+
+    $completiondata = $completion->get_data($cm, false);
+
+    if ($completiondata->completionstate != COMPLETION_INCOMPLETE) {
+        return null;
+    }
+
+    // Get action itemcount.
+    $itemcount = 0;
+    $forum = $DB->get_record('forum', array('id' => $cm->instance));
+    $postcountsql = "
+                SELECT
+                    COUNT(1)
+                  FROM
+                    {forum_posts} fp
+                    INNER JOIN {forum_discussions} fd ON fp.discussion=fd.id
+                 WHERE
+                    fp.userid=:userid AND fd.forum=:forumid";
+    $postcountparams = array('userid' => $USER->id, 'forumid' => $forum->id);
+
+    if ($forum->completiondiscussions) {
+        $count = $DB->count_records('forum_discussions', array('forum' => $forum->id, 'userid' => $USER->id));
+        $itemcount += ($forum->completiondiscussions >= $count) ? ($forum->completiondiscussions - $count) : 0;
+    }
+
+    if ($forum->completionreplies) {
+        $count = $DB->get_field_sql( $postcountsql.' AND fp.parent<>0', $postcountparams);
+        $itemcount += ($forum->completionreplies >= $count) ? ($forum->completionreplies - $count) : 0;
+    }
+
+    if ($forum->completionposts) {
+        $count = $DB->get_field_sql($postcountsql, $postcountparams);
+        $itemcount += ($forum->completionposts >= $count) ? ($forum->completionposts - $count) : 0;
+    }
+
+    // Well there is always atleast one actionable item (view forum, etc).
+    $itemcount = $itemcount > 0 ? $itemcount : 1;
+
+    return $factory->create_instance(
+        get_string('view'),
+        new \moodle_url('/mod/forum/view.php', ['id' => $cm->id]),
+        $itemcount,
+        true
+    );
+}
+
+/**
+ * Add a get_coursemodule_info function in case any forum type wants to add 'extra' information
+ * for the course (see resource).
+ *
+ * Given a course_module object, this function returns any "extra" information that may be needed
+ * when printing this activity in a course listing.  See get_array_of_activities() in course/lib.php.
+ *
+ * @param stdClass $coursemodule The coursemodule object (record).
+ * @return cached_cm_info An object on information that the courses
+ *                        will know about (most noticeably, an icon).
+ */
+function forum_get_coursemodule_info($coursemodule) {
+    global $DB;
+
+    $dbparams = ['id' => $coursemodule->instance];
+    $fields = 'id, name, intro, introformat, completionposts, completiondiscussions, completionreplies';
+    if (!$forum = $DB->get_record('forum', $dbparams, $fields)) {
+        return false;
+    }
+
+    $result = new cached_cm_info();
+    $result->name = $forum->name;
+
+    if ($coursemodule->showdescription) {
+        // Convert intro to html. Do not filter cached version, filters run at display time.
+        $result->content = format_module_intro('forum', $forum, $coursemodule->id, false);
+    }
+
+    // Populate the custom completion rules as key => value pairs, but only if the completion mode is 'automatic'.
+    if ($coursemodule->completion == COMPLETION_TRACKING_AUTOMATIC) {
+        $result->customdata['customcompletionrules']['completiondiscussions'] = $forum->completiondiscussions;
+        $result->customdata['customcompletionrules']['completionreplies'] = $forum->completionreplies;
+        $result->customdata['customcompletionrules']['completionposts'] = $forum->completionposts;
+    }
+
+    return $result;
+}
+
+/**
+ * Callback which returns human-readable strings describing the active completion custom rules for the module instance.
+ *
+ * @param cm_info|stdClass $cm object with fields ->completion and ->customdata['customcompletionrules']
+ * @return array $descriptions the array of descriptions for the custom rules.
+ */
+function mod_forum_get_completion_active_rule_descriptions($cm) {
+    // Values will be present in cm_info, and we assume these are up to date.
+    if (empty($cm->customdata['customcompletionrules'])
+        || $cm->completion != COMPLETION_TRACKING_AUTOMATIC) {
+        return [];
+    }
+
+    $descriptions = [];
+    foreach ($cm->customdata['customcompletionrules'] as $key => $val) {
+        switch ($key) {
+            case 'completiondiscussions':
+                if (empty($val)) {
+                    continue;
+                }
+                $descriptions[] = get_string('completiondiscussionsdesc', 'forum', $val);
+                break;
+            case 'completionreplies':
+                if (empty($val)) {
+                    continue;
+                }
+                $descriptions[] = get_string('completionrepliesdesc', 'forum', $val);
+                break;
+            case 'completionposts':
+                if (empty($val)) {
+                    continue;
+                }
+                $descriptions[] = get_string('completionpostsdesc', 'forum', $val);
+                break;
+            default:
+                break;
+        }
+    }
+    return $descriptions;
 }
