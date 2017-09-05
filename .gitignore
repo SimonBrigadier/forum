@@ -1,0 +1,7 @@
+*
+!lang/en/forum.php
+!lang/ru/forum.php
+!lib.php
+!mod_forum.php
+!view.php
+!.gitignore
